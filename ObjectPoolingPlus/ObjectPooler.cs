@@ -4,6 +4,7 @@ namespace ObjectPoolingPlus {
     public class ObjectPooler {
         Transform pooledObjectsParent;
 
+        public ObjectPooler() : this(new GameObject("Pooled Objects").transform) { }
         public ObjectPooler(Transform pooledObjectsParent) {
             this.pooledObjectsParent = pooledObjectsParent;
         }
@@ -47,5 +48,64 @@ namespace ObjectPoolingPlus {
             GetPool<T, TKey>(key).Get();
         public void Release<T, TKey>(TKey key, T obj) where T : class =>
             GetPool<T, TKey>(key).Release(obj);
+        
+        public void Clear() {
+            
+        }
+    }
+    
+    public static class GlobalPooler {
+        static ObjectPooler s_instance;
+
+        static ObjectPooler Instance {
+            get {
+                if (s_instance == null)
+                    Configure(new GameObject("Global Object Pooler").transform);
+                
+                return s_instance;
+            }
+            
+            set => s_instance = value;
+        }
+
+        public static void Configure(Transform pooledObjectsParent) {
+            if (s_instance != null)
+                Debug.LogWarning("Global Object Pooler is already configured. Reconfiguring will reset all pools.");
+            
+            s_instance?.Clear();
+            s_instance = new ObjectPooler(pooledObjectsParent);
+            Object.DontDestroyOnLoad(pooledObjectsParent.gameObject);
+        }
+        
+        public static IObjectPoolPlus<T> CreatePool<T>(IObjectPoolPlus<T> pool = null) where T : class =>
+            Instance.CreatePool(pool);
+        
+        public static IObjectPoolPlus<T> GetPool<T>() where T : class =>
+            Instance.GetPool<T>();
+
+        public static T Get<T>() where T : class =>
+            Instance.Get<T>();
+
+        public static void Release<T>(T obj) where T : class =>
+            Instance.Release(obj);
+        
+        public static IObjectPoolPlus<T, TKey> CreatePool<T, TKey>(IObjectPoolPlus<T, TKey> pool) where T : class =>
+            Instance.CreatePool(pool);
+        
+        public static IObjectPoolPlus<T> CreatePool<T, TKey>(TKey key, IObjectPoolPlus<T> pool = null) where T : class =>
+            Instance.CreatePool(key, pool);
+        
+        public static IObjectPoolPlus<T> GetPool<T, TKey>(TKey key) where T : class =>
+            Instance.GetPool<T, TKey>(key);
+        
+        public static T Get<T, TKey>(TKey key) where T : class =>
+            Instance.Get<T, TKey>(key);
+        
+        public static void Release<T, TKey>(TKey key, T obj) where T : class =>
+            Instance.Release<T, TKey>(key, obj);
+        
+        public static void Clear() {
+            Instance.Clear();
+        }
     }
 }
