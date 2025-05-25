@@ -14,17 +14,24 @@ namespace ObjectPoolingPlus {
         public ObjectPooler(Transform pooledObjectsParent) {
             this.pooledObjectsParent = pooledObjectsParent;
         }
-
-        public IObjectPoolPlus<T> CreatePool<T>(IObjectPoolPlus<T> pool = null) where T : class {
-            pool ??= DefaultObjectPools.Create<T>();
-            
-            if (pool.Pool == null)
-                pool.CreatePool();
-            
+        
+        public IObjectPoolPlus<T> RegisterPool<T>(IObjectPoolPlus<T> pool) where T : class {
             IObjectPoolPlus<T>.RegisterPool(pool, this);
+            
+            if (registeredPools.ContainsKey(typeof(T))) {
+                Debug.LogWarning($"Pool of type {typeof(T).Name} is already registered. Overwriting and clearing the existing pool.");
+                registeredPools[typeof(T)].Clear(this);
+                registeredPools[typeof(T)] = pool;
+                return pool;
+            }
+            
             registeredPools.Add(typeof(T), pool);
             return pool;
         }
+
+        public IObjectPoolPlus<T> CreatePool<T>(IObjectPoolPlus<T> pool = null) where T : class => 
+            RegisterPool((pool ?? DefaultObjectPools.Create<T>()).CreatePool());
+        
         public IObjectPoolPlus<T> GetPool<T>() where T : class =>
             IObjectPoolPlus<T>.GetFor(this) ?? CreatePool<T>();
 
@@ -34,8 +41,7 @@ namespace ObjectPoolingPlus {
         public void Release<T>(T obj) where T : class =>
             GetPool<T>().Release(obj);
         
-        public IObjectPoolPlus<TKey, T> CreatePool<TKey, T>(IObjectPoolPlus<TKey, T> pool = null) where T : class {
-            pool ??= DefaultObjectPools.Create<TKey, T>();
+        public IObjectPoolPlus<TKey, T> RegisterPool<TKey, T>(IObjectPoolPlus<TKey, T> pool) where T : class {
             IObjectPoolPlus<TKey, T>.RegisterPool(pool, this);
             
             var poolDictionary = registeredKeyedPools.GetValueOrDefault(typeof(T));
@@ -44,20 +50,24 @@ namespace ObjectPoolingPlus {
                 poolDictionary = new Dictionary<Type, IObjectPoolPlus>();
                 registeredKeyedPools.Add(typeof(T), poolDictionary);
             }
-            
-            if (!poolDictionary.TryAdd(typeof(TKey), pool))
-                poolDictionary[typeof(TKey)] = pool;
-            
-            return pool;
-        }
 
-        public IObjectPoolPlus<T> CreatePool<TKey, T>(TKey key, IObjectPoolPlus<T> pool = null) where T : class {
-            var keyedPool = GetPool<TKey, T>();
-            pool ??= DefaultObjectPools.Create<T>();
-            keyedPool.CreatePool(key, pool);
+            if (poolDictionary.ContainsKey(typeof(TKey))) {
+                Debug.LogWarning($"Pool of type {typeof(T).Name} with key of type {typeof(TKey).Name} is already registered. Overwriting and clearing the existing pool.");
+                poolDictionary[typeof(TKey)].Clear(this);
+                poolDictionary[typeof(TKey)] = pool;
+                return pool;
+            }
+            
+            poolDictionary.Add(typeof(TKey), pool);
             return pool;
         }
         
+        public IObjectPoolPlus<TKey, T> CreatePool<TKey, T>(IObjectPoolPlus<TKey, T> pool = null) where T : class => 
+            RegisterPool(pool ?? DefaultObjectPools.Create<TKey, T>());
+
+        public IObjectPoolPlus<T> CreatePool<TKey, T>(TKey key, IObjectPoolPlus<T> pool = null) where T : class => 
+            GetPool<TKey, T>().CreatePool(key, pool ?? DefaultObjectPools.Create<T>());
+
         public IObjectPoolPlus<TKey, T> GetPool<TKey, T>() where T : class =>
             IObjectPoolPlus<TKey, T>.GetFor(this) ?? CreatePool<TKey, T>();
         public IObjectPoolPlus<T> GetPool<TKey, T>(TKey key) where T : class =>
@@ -159,6 +169,11 @@ namespace ObjectPoolingPlus {
             Object.DontDestroyOnLoad(pooledObjectsParent.gameObject);
         }
         
+        public static T Get<T>(T prefab) where T : class =>
+            Instance.Get<T, T>(prefab);
+        public static void Release<T>(T prefab, T obj) where T : class =>
+            Instance.Release<T, T>(prefab, obj);
+
         public static IObjectPoolPlus<T> CreatePool<T>(IObjectPoolPlus<T> pool = null) where T : class =>
             Instance.CreatePool(pool);
         

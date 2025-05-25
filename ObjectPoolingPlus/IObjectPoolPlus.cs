@@ -38,7 +38,7 @@ namespace ObjectPoolingPlus {
         Action<T> OnRelease { get; set; }
         Action<T> OnDestroy { get; set; }
         
-        public IObjectPool<T> CreatePool() {
+        public IObjectPoolPlus<T> CreatePool() {
             Pool = new ObjectPool<T>(
                 createFunc: () => {
                     var obj = CreateObject();
@@ -59,7 +59,7 @@ namespace ObjectPoolingPlus {
                 }
             );
             
-            return Pool;
+            return this;
         }
 
         protected T CreateObject();
@@ -118,7 +118,7 @@ namespace ObjectPoolingPlus {
         Action<T> OnRelease { get; set; }
         Action<T> OnDestroy { get; set; }
         
-        IObjectPool<T> CreatePool(TKey key, IObjectPoolPlus<T> pool) {
+        IObjectPoolPlus<T> CreatePool(TKey key, IObjectPoolPlus<T> pool) {
             Pools ??= new Dictionary<TKey, IObjectPoolPlus<T>>();
             
             if (Pools.TryGetValue(key, out var existingPool)) {
@@ -146,7 +146,7 @@ namespace ObjectPoolingPlus {
             };
             
             Pools[key] = pool;
-            return pool.Pool;
+            return pool;
         }
         
         protected void OnCreateObject(TKey key, T obj);
