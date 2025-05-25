@@ -32,8 +32,8 @@ namespace ObjectPoolingPlus {
             _ => AnyObjectPool<T>()
         };
         
-        internal static IObjectPoolPlus<T, TKey> Create<T, TKey>() where T : class => typeof(T) switch {
-            _ => new KeyedObjectPool<T, TKey>()
+        internal static IObjectPoolPlus<TKey, T> Create<TKey, T>() where T : class => typeof(T) switch {
+            _ => new KeyedObjectPool<TKey, T>()
         };
         
         internal static IObjectPoolPlus<T> PoolableObjectPool<T>(T prefab) where T : class, IPoolableObject<T>, new() =>
@@ -185,17 +185,17 @@ namespace ObjectPoolingPlus {
         }
     }
     
-    public class KeyedObjectPool<T, TKey> : IObjectPoolPlus<T, TKey> where T : class {
-        Dictionary<TKey, IObjectPoolPlus<T>> IObjectPoolPlus<T, TKey>.Pools { get; set; }
+    public class KeyedObjectPool<TKey, T> : IObjectPoolPlus<TKey, T> where T : class {
+        Dictionary<TKey, IObjectPoolPlus<T>> IObjectPoolPlus<TKey, T>.Pools { get; set; }
 
         public Action<T> OnCreate { get; set; }
         public Action<T> OnGet { get; set; }
         public Action<T> OnRelease { get; set; }
         public Action<T> OnDestroy { get; set; }
 
-        void IObjectPoolPlus<T, TKey>.OnCreateObject(TKey key, T obj) { }
-        void IObjectPoolPlus<T, TKey>.OnGetObject(TKey key, T obj) { }
-        void IObjectPoolPlus<T, TKey>.OnReleaseObject(TKey key, T obj) { }
-        void IObjectPoolPlus<T, TKey>.OnDestroyObject(TKey key, T obj) { }
+        void IObjectPoolPlus<TKey, T>.OnCreateObject(TKey key, T obj) { }
+        void IObjectPoolPlus<TKey, T>.OnGetObject(TKey key, T obj) { }
+        void IObjectPoolPlus<TKey, T>.OnReleaseObject(TKey key, T obj) { }
+        void IObjectPoolPlus<TKey, T>.OnDestroyObject(TKey key, T obj) { }
     }
 }

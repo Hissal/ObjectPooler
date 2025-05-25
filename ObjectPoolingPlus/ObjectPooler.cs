@@ -1,9 +1,15 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace ObjectPoolingPlus {
-    public class ObjectPooler {
+    public class ObjectPooler : IDisposable {
         Transform pooledObjectsParent;
 
+        readonly Dictionary<Type, IObjectPoolPlus> registeredPools = new();
+        readonly Dictionary<Type, Dictionary<Type, IObjectPoolPlus>> registeredKeyedPools = new();
+        
         public ObjectPooler() : this(new GameObject("Pooled Objects").transform) { }
         public ObjectPooler(Transform pooledObjectsParent) {
             this.pooledObjectsParent = pooledObjectsParent;
@@ -15,7 +21,8 @@ namespace ObjectPoolingPlus {
             if (pool.Pool == null)
                 pool.CreatePool();
             
-            IObjectPoolPlus<T>.RegisterPool(this, pool);
+            IObjectPoolPlus<T>.RegisterPool(pool, this);
+            registeredPools.Add(typeof(T), pool);
             return pool;
         }
         public IObjectPoolPlus<T> GetPool<T>() where T : class =>
@@ -27,30 +34,96 @@ namespace ObjectPoolingPlus {
         public void Release<T>(T obj) where T : class =>
             GetPool<T>().Release(obj);
         
-        public IObjectPoolPlus<T, TKey> CreatePool<T, TKey>(IObjectPoolPlus<T, TKey> pool) where T : class =>
-            IObjectPoolPlus<T, TKey>.RegisterPool(this, pool);
-
-        public IObjectPoolPlus<T> CreatePool<T, TKey>(TKey key, IObjectPoolPlus<T> pool = null) where T : class {
-            var keyedPool = IObjectPoolPlus<T, TKey>.GetFor(this) ?? DefaultObjectPools.Create<T, TKey>();
+        public IObjectPoolPlus<TKey, T> CreatePool<TKey, T>(IObjectPoolPlus<TKey, T> pool = null) where T : class {
+            pool ??= DefaultObjectPools.Create<TKey, T>();
+            IObjectPoolPlus<TKey, T>.RegisterPool(pool, this);
             
-            if (pool?.Pool == null) {
-                pool ??= DefaultObjectPools.Create<T>();
-                keyedPool.CreatePool(key, pool);
+            var poolDictionary = registeredKeyedPools.GetValueOrDefault(typeof(T));
+            
+            if (poolDictionary == null) {
+                poolDictionary = new Dictionary<Type, IObjectPoolPlus>();
+                registeredKeyedPools.Add(typeof(T), poolDictionary);
             }
             
-            IObjectPoolPlus<T, TKey>.RegisterPool(this, keyedPool);
+            if (!poolDictionary.TryAdd(typeof(TKey), pool))
+                poolDictionary[typeof(TKey)] = pool;
+            
             return pool;
         }
-        public IObjectPoolPlus<T> GetPool<T, TKey>(TKey key) where T : class =>
-            IObjectPoolPlus<T, TKey>.GetFor(this, key) ?? CreatePool<T, TKey>(key);
+
+        public IObjectPoolPlus<T> CreatePool<TKey, T>(TKey key, IObjectPoolPlus<T> pool = null) where T : class {
+            var keyedPool = GetPool<TKey, T>();
+            pool ??= DefaultObjectPools.Create<T>();
+            keyedPool.CreatePool(key, pool);
+            return pool;
+        }
         
-        public T Get<T, TKey>(TKey key) where T : class =>
-            GetPool<T, TKey>(key).Get();
-        public void Release<T, TKey>(TKey key, T obj) where T : class =>
-            GetPool<T, TKey>(key).Release(obj);
+        public IObjectPoolPlus<TKey, T> GetPool<TKey, T>() where T : class =>
+            IObjectPoolPlus<TKey, T>.GetFor(this) ?? CreatePool<TKey, T>();
+        public IObjectPoolPlus<T> GetPool<TKey, T>(TKey key) where T : class =>
+            IObjectPoolPlus<TKey, T>.GetFor(this, key) ?? CreatePool<TKey, T>(key);
+        
+        public T Get<TKey, T>(TKey key) where T : class =>
+            GetPool<TKey, T>(key).Get();
+        public void Release<TKey, T>(TKey key, T obj) where T : class =>
+            GetPool<TKey, T>(key).Release(obj);
+        
+        public bool HasPool<T>() where T : class => 
+            registeredPools.ContainsKey(typeof(T));
+        public bool HasPool<TKey, T>() where T : class => 
+            registeredKeyedPools.TryGetValue(typeof(T), out var poolDictionary) && poolDictionary.ContainsKey(typeof(TKey));
+        public bool HasPool<TKey, T>(TKey key) where T : class =>
+            registeredKeyedPools.TryGetValue(typeof(T), out var poolDictionary) && 
+            poolDictionary.TryGetValue(typeof(TKey), out var pool) && 
+            pool is IObjectPoolPlus<TKey, T> keyedPool && keyedPool.HasKey(key);
+
+        public void Clear<T>() where T : class {
+            IObjectPoolPlus<T>.ClearFor(this);
+            registeredPools.Remove(typeof(T));
+        }
+
+        public void Clear<TKey, T>() where T : class {
+            IObjectPoolPlus<TKey, T>.ClearFor(this);
+            
+            if (!registeredKeyedPools.TryGetValue(typeof(T), out var poolDictionary))
+                return;
+            
+            poolDictionary.Remove(typeof(TKey));
+            if (poolDictionary.Count == 0)
+                registeredKeyedPools.Remove(typeof(T));
+        }
+
+        public void Clear<TKey, T>(TKey key) where T : class {
+            IObjectPoolPlus<TKey, T>.ClearFor(this, key);
+            
+            if (!registeredKeyedPools.TryGetValue(typeof(T), out var poolDictionary) || !poolDictionary.TryGetValue(typeof(TKey), out var pool))
+                return;
+            
+            if (pool is IObjectPoolPlus<TKey, T> keyedPool && keyedPool.Pools.Count == 0)
+                keyedPool.Pools.Remove(key);
+        }
         
         public void Clear() {
+            foreach (var pool in registeredPools.Values) {
+                pool.Clear(this);
+            }
             
+            registeredPools.Clear();
+            
+            foreach (var keyedPool in registeredKeyedPools.Values) {
+                foreach (var pool in keyedPool.Values) {
+                    pool.Clear(this);
+                }
+                keyedPool.Clear();
+            }
+            registeredKeyedPools.Clear();
+        }
+
+        ~ObjectPooler() {
+            Dispose();
+        }
+        public void Dispose() {
+            Clear();
         }
     }
     
@@ -66,6 +139,15 @@ namespace ObjectPoolingPlus {
             }
             
             set => s_instance = value;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void CleanUp() {
+            if (s_instance == null)
+                return;
+            
+            s_instance.Dispose();
+            s_instance = null;
         }
 
         public static void Configure(Transform pooledObjectsParent) {
@@ -89,20 +171,34 @@ namespace ObjectPoolingPlus {
         public static void Release<T>(T obj) where T : class =>
             Instance.Release(obj);
         
-        public static IObjectPoolPlus<T, TKey> CreatePool<T, TKey>(IObjectPoolPlus<T, TKey> pool) where T : class =>
+        public static IObjectPoolPlus<TKey, T> CreatePool<TKey, T>(IObjectPoolPlus<TKey, T> pool = null) where T : class =>
             Instance.CreatePool(pool);
         
-        public static IObjectPoolPlus<T> CreatePool<T, TKey>(TKey key, IObjectPoolPlus<T> pool = null) where T : class =>
+        public static IObjectPoolPlus<T> CreatePool<TKey, T>(TKey key, IObjectPoolPlus<T> pool = null) where T : class =>
             Instance.CreatePool(key, pool);
         
-        public static IObjectPoolPlus<T> GetPool<T, TKey>(TKey key) where T : class =>
-            Instance.GetPool<T, TKey>(key);
+        public static IObjectPoolPlus<T> GetPool<TKey, T>(TKey key) where T : class =>
+            Instance.GetPool<TKey, T>(key);
         
-        public static T Get<T, TKey>(TKey key) where T : class =>
-            Instance.Get<T, TKey>(key);
+        public static T Get<TKey, T>(TKey key) where T : class =>
+            Instance.Get<TKey, T>(key);
         
-        public static void Release<T, TKey>(TKey key, T obj) where T : class =>
-            Instance.Release<T, TKey>(key, obj);
+        public static void Release<TKey, T>(TKey key, T obj) where T : class =>
+            Instance.Release(key, obj);
+
+        public static bool HasPool<T>() where T : class =>
+            Instance.HasPool<T>();
+        public static bool HasPool<TKey, T>() where T : class =>
+            Instance.HasPool<TKey, T>();
+        public static bool HasPool<TKey, T>(TKey key) where T : class =>
+            Instance.HasPool<TKey, T>(key);
+        
+        public static void Clear<T>() where T : class =>
+            Instance.Clear<T>();
+        public static void Clear<TKey, T>() where T : class =>
+            Instance.Clear<TKey, T>();
+        public static void Clear<TKey, T>(TKey key) where T : class =>
+            Instance.Clear<TKey, T>(key);
         
         public static void Clear() {
             Instance.Clear();

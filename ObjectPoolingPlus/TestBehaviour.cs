@@ -5,27 +5,62 @@ namespace ObjectPoolingPlus {
     [RequireComponent(typeof(Rigidbody))]
     public class TestBehaviour : MonoBehaviour {
         void Start() {
-            // Example usage of the object pooling system
-            
-            // Create a pool for Rigidbody objects
-            var rbPool = GlobalPooler.CreatePool<Rigidbody>();
-            rbPool.OnCreate += obj => Debug.Log($"Created: {obj}");
-            rbPool.OnGet += obj => Debug.Log($"Got: {obj}");
-            rbPool.OnRelease += obj => Debug.Log($"Released: {obj}");
-            rbPool.OnDestroy += obj => Debug.Log($"Destroyed: {obj}");
-            // Get a Rigidbody from the pool
-            var pooledRb = rbPool.Get();
-            Debug.Log($"Pooled Rigidbody: {pooledRb}");
-            // Release the Rigidbody back to the pool
-            rbPool.Release(pooledRb);
-            
-            var pooledObject = GlobalPooler.Get<TestPoolableObject>();
-            Debug.Log($"Pooled TestPoolableObject: {pooledObject}");
-            GlobalPooler.Release(pooledObject);
+            // GlobalPooler.CreatePool<int, TestClass>(1);
+            // GlobalPooler.CreatePool<int, TestClass>(2);
+            // GlobalPooler.CreatePool<int, TestClass>(3);
+            // GlobalPooler.CreatePool<int, TestClass>(4);
+            //
+            // Debug.Log($"Has Pool 1: {GlobalPooler.HasPool<int, TestClass>(1)}");
+            // Debug.Log($"Has Pool 2: {GlobalPooler.HasPool<int, TestClass>(2)}");
+            // Debug.Log($"Has Pool 3: {GlobalPooler.HasPool<int, TestClass>(3)}");
+            // Debug.Log($"Has Pool 4: {GlobalPooler.HasPool<int, TestClass>(4)}");
+            // Debug.Log($"Has Pool 5: {GlobalPooler.HasPool<int, TestClass>(5)}");
+            //
+            // var obj1 = GlobalPooler.Get<int, TestClass>(1);
+            // var obj2 = GlobalPooler.Get<int, TestClass>(2);
+            // var obj3 = GlobalPooler.Get<int, TestClass>(3);
+            // var obj4 = GlobalPooler.Get<int, TestClass>(4);
+            //
+            // Debug.Log($"Got objects: {obj1.InstanceId}, {obj2.InstanceId}, {obj3.InstanceId}, {obj4.InstanceId}");
+            //
+            // GlobalPooler.Release(1, obj1);
+            // GlobalPooler.Release(2, obj2);
+            // GlobalPooler.Release(3, obj3);
+            // GlobalPooler.Release(4, obj4);
+            //
+            // GlobalPooler.Clear<int, TestClass>();
+            //
+            // Debug.Log("Cleared all pools for TestClass");
+            // Debug.Log($"Has Pool 1: {GlobalPooler.HasPool<int, TestClass>(1)}");
+            // Debug.Log($"Has Pool 2: {GlobalPooler.HasPool<int, TestClass>(2)}");
+            // Debug.Log($"Has Pool 3: {GlobalPooler.HasPool<int, TestClass>(3)}");
+            // Debug.Log($"Has Pool 4: {GlobalPooler.HasPool<int, TestClass>(4)}");
+            // Debug.Log($"Has Pool 5: {GlobalPooler.HasPool<int, TestClass>(5)}");
+        }
 
-            var pooledCSharpObject = GlobalPooler.Get<testClass>();
-            Debug.Log($"Pooled testClass: {pooledCSharpObject}");
-            GlobalPooler.Release(pooledCSharpObject);
+        void Update() { 
+            if (Input.GetKeyDown(KeyCode.C)) {
+                ClearAllPools();
+            }
+            if (Input.GetKeyDown(KeyCode.B)) {
+                CreateBigPools();
+            }
+            if (Input.GetKeyDown(KeyCode.T)) {
+                var obj = GlobalPooler.Get<int, TestClass>(1);
+                Debug.Log("Got TestClass: " + obj.InstanceId);
+                GlobalPooler.Release(obj);
+            }
+        }
+
+        void CreateBigPools() {
+            for (int i = 0; i < 1000; i++) {
+                GlobalPooler.CreatePool<int, TestClass>(i);
+            }
+        }
+        
+        void ClearAllPools() {
+            GlobalPooler.Clear();
+            Debug.Log("Cleared all pools");
         }
     }
     
@@ -45,9 +80,13 @@ namespace ObjectPoolingPlus {
         }
     }
     
-    public class testClass {
-        public void Test() {
-            Debug.Log("TestClass Test Constructor called");
+    public class TestClass {
+        static int s_instanceCount = 0;
+        
+        public readonly int InstanceId;
+        public TestClass() {
+            InstanceId = ++s_instanceCount;
+            Debug.Log("Created TestClass instance with ID: " + InstanceId);
         }
     }
 }
